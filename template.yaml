@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  simple schedule serverless application setup
+  
+Globals:
+  Api:
+    MinimumCompressionSize: 0
+    TracingEnabled: true
+  Function:
+    Tracing: Active
+    Timeout: 3
+    Runtime: nodejs14.x
+    Environment:
+      Variables:
+        ENV: Production
+
+Conditions:
+  isSamLocal: !Equals [!Ref "AWS::StackName", ""]
+  isMaster: !Equals [!Ref "AWS::StackName", "auth-service"]
+
+Parameters:
+  LanguageCode:
+    Type: String
+    Description: 'The language code of your audio file'
+    AllowedValues : ['en-US','es-US','en-AU','fr-CA','en-GB','de-DE','pt-BR','fr-FR','it-IT','ko-KR','es-ES']
+  InputS3BucketName:
+    Type: String
+    Default: 's3-lambda-transcribe-input-audio-bucket-test'
+    MinLength: 3
+  OutputS3BucketName:
+    Type: String
+    Default: 's3-lambda-transcribe-output-text-bucket-test'
+    MinLength: 3
+
+Resources:
+  InputS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref InputS3BucketName
+
+  ConvertFileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/
+      Handler: convert-file-to-transcript-function.lambdaHandler
+      Timeout: 30
+      MemorySize: 1024
+      Policies:
+      - S3CrudPolicy:
+          BucketName: !Ref OutputS3BucketName
+      - S3ReadPolicy:
+          BucketName: !Ref InputS3BucketName
+      - Statement:
+          - Effect: Allow
+            Action:
+              - 'transcribe:StartTranscriptionJob'
+            Resource: '*'
+      Environment:
+        Variables:
+          OUTPUT_BUCKET: !Ref OutputS3Bucket
+          LANGUAGE_CODE: !Ref LanguageCode
+      Events:
+        FileUpload:
+          Type: S3
+          Properties:
+            Bucket: !Ref InputS3Bucket
+            Events: s3:ObjectCreated:*
+
+  OutputS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref OutputS3BucketName
+
+
+
+Outputs:
+
+  InputS3Bucket:
+    Description: Input S3 bucket
+    Value: !Ref InputS3Bucket
+
+  OutputS3Bucket:
+    Description: Output S3 bucket
+    Value: !Ref OutputS3Bucket

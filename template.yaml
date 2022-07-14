@@ -14,6 +14,16 @@ Globals:
     Environment:
       Variables:
         ENV: Production
+        PGDBCLUSTERARN: !ImportValue "default-db-cluster-arn"
+        PGUSER: !ImportValue "default-db-admin-username"
+        PGHOST: !ImportValue "default-db-cluster-endpoint"
+        PGPASSWORD: !ImportValue "default-db-password"
+        PGDATABASE: !ImportValue "default-db-name"
+        PGPORT: 5432 
+        SECRET_ARN: !ImportValue "default-db-secret"
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+        JWT_SECRET: "somesecretpossiblyssl"
+        JWT_EXPIRES_IN: "30d"
 
 Conditions:
   isSamLocal: !Equals [!Ref "AWS::StackName", ""]
@@ -23,14 +33,15 @@ Parameters:
   LanguageCode:
     Type: String
     Description: 'The language code of your audio file'
+    Default: 'en-GB'
     AllowedValues : ['en-US','es-US','en-AU','fr-CA','en-GB','de-DE','pt-BR','fr-FR','it-IT','ko-KR','es-ES']
   InputS3BucketName:
     Type: String
-    Default: 's3-lambda-transcribe-input-audio-bucket-test'
+    Default: 's3-lambda-transcribe-input-audio-build'
     MinLength: 3
   OutputS3BucketName:
     Type: String
-    Default: 's3-lambda-transcribe-output-text-bucket-test'
+    Default: 's3-lambda-transcribe-output-text-build'
     MinLength: 3
 
 Resources:
@@ -55,6 +66,7 @@ Resources:
           - Effect: Allow
             Action:
               - 'transcribe:StartTranscriptionJob'
+              - '*'
             Resource: '*'
       Environment:
         Variables:
@@ -72,10 +84,7 @@ Resources:
     Properties:
       BucketName: !Ref OutputS3BucketName
 
-
-
 Outputs:
-
   InputS3Bucket:
     Description: Input S3 bucket
     Value: !Ref InputS3Bucket

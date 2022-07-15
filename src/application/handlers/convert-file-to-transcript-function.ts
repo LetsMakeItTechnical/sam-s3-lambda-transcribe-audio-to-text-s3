@@ -1,24 +1,46 @@
 import { S3Event, Context } from 'aws-lambda'
 // import { StartTranscriptionJobResponse } from 'aws-sdk/clients/transcribeservice'
-import { AppError } from '../../utils/appError'
 import { HTTP_STATUS_CODE } from '../../utils/HttpClient/http-status-codes'
 import logger from '../services/logging'
 import AWS from 'aws-sdk'
+import AppError from '../../utils/responses/error/AppError'
+// import { TranscribeStreamingClient, TranscriptResultStream, TranscriptEvent } from '@aws-sdk/client-transcribe-streaming'
+// https://github.com/aws/aws-sdk-js-v3/tree/main/clients/client-transcribe-streaming
+
+function streamToString (stream: any) {
+  const chunks = [] as any[];
+  
+  return new Promise((resolve, reject) => {
+    stream.on('data', (chunk: WithImplicitCoercion<ArrayBuffer | SharedArrayBuffer>) => chunks.push(Buffer.from(chunk)));
+    stream.on('error', (err: any) => reject(err));
+    stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+  })
+}
+
+function decodeString(str: string): string {
+  // For some reason this has to be decoded twice to properly parse the equal (=) sign
+  return decodeURIComponent(
+    JSON.parse(`"${str.replace(/\"/g, '\\"')}"`)
+  ).replace(/\+/g, ' ')
+}
 
 // https://stackoverflow.com/questions/68549572/npm-install-in-github-actions-failed
 
 export const lambdaHandler = async function (
   event: S3Event,
   context: Context
-): Promise<void> {
+): Promise<any> {
   const transcribe = new AWS.TranscribeService()
+// AWS.TranscribeStreamingClient 
+// new TranscribeStreamingClient({}).config()
   const path = require('path')
-  // const LANGUAGE_CODE = process.env?.LANGUAGE_CODE
+  const LANGUAGE_CODE = process.env?.LANGUAGE_CODE
   const OUTPUT_BUCKET = process.env.OUTPUT_BUCKET
 
   const eventRecord = event.Records && event.Records[0]
   const inputBucket = eventRecord.s3.bucket.name
-  const key = eventRecord.s3.object.key
+  const key = decodeString(eventRecord.s3.object.key)
+
   const id = context.awsRequestId
 
   const fileUri = `https://s3-us-west-2.amazonaws.com/${inputBucket}/${key}`
@@ -39,36 +61,17 @@ export const lambdaHandler = async function (
       throw new AppError(message, HTTP_STATUS_CODE.BAD_REQUEST)
     }
 
-    // const params = {
-    //   LanguageCode: LANGUAGE_CODE,
-    //   Media: {
-    //     MediaFileUri: fileUri,
-    //   },
-    //   MediaFormat: extension,
-    //   TranscriptionJobName: jobName,
-    //   OutputBucketName: OUTPUT_BUCKET,
-    // }
+    const params = {
+      LanguageCode: LANGUAGE_CODE,
+      Media: {
+        MediaFileUri: fileUri,
+      },
+      MediaFormat: extension,
+      TranscriptionJobName: jobName,
+      OutputBucketName: OUTPUT_BUCKET,
+    }
 
-    //@ts-ignore
-    const hhhh = await transcribe
-      .startMedicalTranscriptionJob({
-        LanguageCode: 'en-US',
-        Media: {
-          MediaFileUri: fileUri,
-        },
-        MediaFormat: extension,
-        MedicalTranscriptionJobName: jobName,
-        OutputBucketName: OUTPUT_BUCKET,
-        Type: 'DICTATION',
-        Specialty: 'PRIMARYCARE',
-      })
-      .promise()
-
-    console.log('----00----')
-    console.log(hhhh)
-    console.log('====00====')
-
-    // return transcribe.startTranscriptionJob(params).promise()
+    return transcribe.startTranscriptionJob(params).promise()
   } catch (err) {
     const error = err as AppError
 
@@ -81,5 +84,7 @@ export const lambdaHandler = async function (
     logger.error(error)
     logger.error(JSON.stringify(error))
     logger.info('====00====')
+
+    return {}
   }
 }

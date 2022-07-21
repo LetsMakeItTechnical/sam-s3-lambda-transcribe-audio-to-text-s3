@@ -36,8 +36,9 @@ export const lambdaHandler = async function (
     let extension = path.extname(key)
     extension = extension.substr(1, extension.length)
 
-    logger.info('converting from ', { fileUri, extension })
     
+    logger.info('converting from ', { fileUri, extension })
+
     const extentions = Object.keys(EXTENTIONS)
 
     if (

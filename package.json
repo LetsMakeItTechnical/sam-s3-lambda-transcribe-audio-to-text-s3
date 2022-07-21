@@ -79,7 +79,7 @@
     "data-api-migrations": "^1.0.0-alpha.3",
     "dotenv": "^16.0.0",
     "easyinvoice": "^2.3.0",
-    "eslint-loader": "^3.0.4",
+    "eslint-loader": "latest",
     "file-loader": "^6.2.0",
     "from": "^0.1.7",
     "import": "0.0.6",

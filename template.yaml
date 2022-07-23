@@ -10,7 +10,7 @@ Globals:
   Function:
     Tracing: Active
     Timeout: 3
-    Runtime: nodejs14.x
+    Runtime: nodejs12.x
     Environment:
       Variables:
         ENV: Production
@@ -79,6 +79,29 @@ Resources:
             Bucket: !Ref InputS3Bucket
             Events: s3:ObjectCreated:*
 
+  # StreamAudiFunction:
+  #   Type: AWS::Serverless::Function
+  #   Properties:
+  #     CodeUri: dist/
+  #     Handler: stream-audio-transciption-function.lambdaHandler
+  #     Timeout: 30
+  #     MemorySize: 1024
+  #     Policies:
+  #     - S3CrudPolicy:
+  #         BucketName: !Ref OutputS3BucketName
+  #     - S3ReadPolicy:
+  #         BucketName: !Ref InputS3BucketName
+  #     - Statement:
+  #         - Effect: Allow
+  #           Action:
+  #             - 'transcribe:StartTranscriptionJob'
+  #             - '*'
+  #           Resource: '*'
+  #     Environment:
+  #       Variables:
+  #         OUTPUT_BUCKET: !Ref OutputS3Bucket
+  #         LANGUAGE_CODE: !Ref LanguageCode
+   
   OutputS3Bucket:
     Type: AWS::S3::Bucket
     Properties:

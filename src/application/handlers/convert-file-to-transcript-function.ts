@@ -3,7 +3,10 @@ import { HTTP_STATUS_CODE } from '../../utils/HttpClient/http-status-codes'
 import logger from '../services/logging'
 import AWS from 'aws-sdk'
 import AppError from '../../utils/responses/error/AppError'
+import path from 'path'
+import { EXTENTIONS } from '../domain/enums/Extentions'
 
+// https://stackoverflow.com/questions/68549572/npm-install-in-github-actions-failed
 
 function decodeString(str: string): string {
   // For some reason this has to be decoded twice to properly parse the equal (=) sign
@@ -12,17 +15,11 @@ function decodeString(str: string): string {
   ).replace(/\+/g, ' ')
 }
 
-// https://stackoverflow.com/questions/68549572/npm-install-in-github-actions-failed
-
 export const lambdaHandler = async function (
   event: S3Event,
   context: Context
-): Promise<any> {
+): Promise<void> {
   const transcribe = new AWS.TranscribeService()
-  const path = require('path')
-  const LANGUAGE_CODE = process.env?.LANGUAGE_CODE
-  const OUTPUT_BUCKET = process.env.OUTPUT_BUCKET
-
   const eventRecord = event.Records && event.Records[0]
   const inputBucket = eventRecord.s3.bucket.name
   const key = decodeString(eventRecord.s3.object.key)
@@ -32,17 +29,19 @@ export const lambdaHandler = async function (
   const fileUri = `https://s3-us-west-2.amazonaws.com/${inputBucket}/${key}`
   const jobName = `s3-lambda-audio-transcribe-${id}`
 
+  const { LANGUAGE_CODE, OUTPUT_BUCKET } = process.env || {}
+
+  let extension = path.extname(key)
+  extension = extension.substr(1, extension.length)
+
+  logger.info('converting from ', { fileUri, extension })
+
+  const extentions = Object.values(EXTENTIONS)
+
   try {
-    let extension = path.extname(key)
-    extension = extension.substr(1, extension.length)
-
-    logger.info('converting from ', { fileUri, extension })
-
-    if (
-      !['amr', 'flac', 'wav', 'ogg', 'mp3', 'mp4', 'webm'].includes(extension)
-    ) {
-      const message =
-        'Invalid file extension, the only supported AWS Transcribe file types are MP3, MP4, WAV, FLAC.'
+    //@ts-ignore
+    if (!extentions.includes(extension)) {
+      const message = `Invalid file extension, the only supported AWS Transcribe file types are MP3, MP4, WAV, FLAC.`
       logger.error(message)
       throw new AppError(message, HTTP_STATUS_CODE.BAD_REQUEST)
     }
@@ -57,7 +56,7 @@ export const lambdaHandler = async function (
       OutputBucketName: OUTPUT_BUCKET,
     }
 
-    return transcribe.startTranscriptionJob(params).promise()
+    await transcribe.startTranscriptionJob(params).promise()
   } catch (err) {
     const error = err as AppError
 
@@ -70,7 +69,5 @@ export const lambdaHandler = async function (
     logger.error(error)
     logger.error(JSON.stringify(error))
     logger.info('====00====')
-
-    return {}
   }
 }

@@ -6,6 +6,12 @@
 //   StartStreamTranscriptionCommand,
 // } from '@aws-sdk/client-transcribe-streaming'
 
+import { KinesisStreamEvent } from 'aws-lambda';
+// import AWS from 'aws-sdk';
+import marshaller = require('@aws-sdk/eventstream-marshaller'); // for converting binary event stream messages to and from JSON
+import util_utf8_node = require('@aws-sdk/util-utf8-node'); // uti
+
+const eventStreamMarshaller = new marshaller.EventStreamMarshaller(util_utf8_node.toUtf8, util_utf8_node.fromUtf8);
 // const audioSource = createReadStream('ghfhgh.mp4')
 
 // const audioPayloadStream = new PassThrough({ highWaterMark: 1 * 1024 }) // Stream chunk less than 1 KB
@@ -21,6 +27,9 @@
 //   event: S3Event,
 //   context: Context
 // ): Promise<void> {
+//   console.log('----00----');
+//   console.log(JSON.stringify(event));
+//   console.log('====00====');
 
 //   const client = new TranscribeStreamingClient({})
 //   const command = new StartStreamTranscriptionCommand({
@@ -28,7 +37,7 @@
 //     MediaEncoding: 'pcm',
 //     MediaSampleRateHertz: 44100,
 //     AudioStream: audioStream(),
-//   })
+//   });
 
 //   try {
 //     const response = await client.send(command)
@@ -64,4 +73,37 @@
 //     logger.info('====00====')
 //   }
 // }
-// "@aws-sdk/client-transcribe-streaming": "^3.128.0",
+
+export const lambdaHandler = async function (event: KinesisStreamEvent): Promise<void> {
+    console.log('----00----');
+    console.log(JSON.stringify(event));
+    console.log('====00====');
+
+    // const api = new AWS.ApiGatewayManagementApi({
+    //     apiVersion: '2018-11-29',
+    //     endpoint: 'wss://ud09txo6yi.execute-api.eu-west-1.amazonaws.com/Prod',
+    // });
+
+    for (let r in event.Records) {
+        // const data = JSON.parse(new Buffer(event.Records[r].kinesis.data, 'base64').toString());
+        //@ts-ignore
+        const data = eventStreamMarshaller.unmarshall(new Buffer(event.Records[r].kinesis.data))
+        console.log('----data----');
+        console.log(data);
+        console.log('====data====');
+        try {
+            // await api
+            //     .postToConnection({
+            //         ConnectionId: data.connectionId,
+            //         Data: JSON.stringify(data.payload),
+            //     })
+            //     .promise();
+        } catch (e: any) {
+            if (e.statusCode === 410) {
+                console.log('client disconnected');
+            } else {
+                throw e;
+            }
+        }
+    }
+};

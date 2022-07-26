@@ -1,64 +1,34 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
-const fs = require('fs');
 const path = require('path');
-const BannerPlugin = require('webpack').BannerPlugin;
-const webpack = require('webpack');
+const AwsSamPlugin = require('aws-sam-webpack-plugin');
 
-const entry = fs
-  .readdirSync('./src/application/handlers', { withFileTypes: true })
-  .filter(file => file.isFile())
-  .map(file => path.parse(file.name).name)
-  .filter(file => !/[a-z]+.ts$/i.test(file))
-  .filter(file => !/^@/.test(file))
-  .reduce(
-    (accumulator, file) => ({
-      ...accumulator,
-      [`${file}`]: `./src/application/handlers/${file}`,
-    }),
-    {},
-  );
+const awsSamPlugin = new AwsSamPlugin();
 
 module.exports = {
-  entry,
-  resolve: {
-    extensions: ['.ts', '.js', '.json', '.csv'],
-  },
-  target: 'node',
-  output: {
-    libraryTarget: 'commonjs2',
-    path: path.join(__dirname, 'dist'),
-    filename: '[name].js',
-  },
-  module: {
-    rules: [
-      {
-        test: /\.ts$/,
-        exclude: /node_modules/,
-        use: ['ts-loader'],
-      },
-       {
-        test: /\.ya?ml$/,
-        type: 'json',
-        use: 'yaml-loader',
-      },
-      {
-        test: /\.png$/i,
-        use: 'file-loader',
-      },
-    ],
-  },
+    // Loads the entry object from the AWS::Serverless::Function resources in your
+    // SAM config. Setting this to a function will
+    entry: () => awsSamPlugin.entry(),
 
-    // Set the webpack mode
-  mode: process.env.NODE_ENV || "production",
-  
-  devtool:  "source-map",
-  plugins: [
-    new BannerPlugin({
-      banner: 'require("source-map-support").install();',
-      raw: true,
-      entryOnly: false,
-    }),
+    // Write the output to the .aws-sam/build folder
+    output: {
+        filename: (chunkData) => awsSamPlugin.filename(chunkData),
+        libraryTarget: 'commonjs2',
+        path: path.resolve('.'),
+    },
 
-    new webpack.IgnorePlugin(/^pg-native$/)
-  ],
+    // Create source maps
+    devtool: 'source-map',
+
+    // Resolve .ts and .js extensions
+    resolve: {
+        extensions: ['.ts', '.js'],
+    },
+
+    // Target node
+    target: 'node',
+    externals: process.env.NODE_ENV === 'development' ? [] : ['aws-sdk'],
+    mode: process.env.NODE_ENV || 'production',
+    module: {
+        rules: [{ test: /\.tsx?$/, loader: 'ts-loader' }],
+    },
+    plugins: [awsSamPlugin],
 };

@@ -28,6 +28,36 @@ This component has one CloudFormation deployment parameter:
   - 'ko-KR'
   - 'es-ES'
 
+
+**Note:** `.gitignore` contains the `samconfig.toml`, hence make sure backup this file, or modify your .gitignore locally.
+
+## Testing the chat API
+
+To test the WebSocket API, you can use [wscat](https://github.com/websockets/wscat), an open-source command line tool.
+
+1. [Install NPM](https://www.npmjs.com/get-npm).
+2. Install wscat:
+``` bash
+$ npm install -g wscat
+```
+3. On the console, connect to your published API endpoint by executing the following command:
+``` bash
+$ wscat -c wss://{YOUR-API-ID}.execute-api.{YOUR-REGION}.amazonaws.com/{STAGE}
+```
+4. To test the sendMessage function, send a JSON message like the following example. The Lambda function sends it back using the callback URL: 
+``` bash
+
+$ wscat -c wss://{YOUR-API-ID}.execute-api.{YOUR-REGION}.amazonaws.com/prod
+aws kinesis put-record --stream-name websocket-stack-test-EventStream-L1ud9qazBoYj --partition-key user1 --data "user signup" --cli-binary-format raw-in-base64-out
+connected (press CTRL+C to quit)
+> {"action":"sendmessage", "data":"hello world"}
+< hello world
+```
+
+## License Summary
+
+This sample code is made available under a modified MIT license. See the LICENSE file.
+
 ## Latest Release - 1.1.0
 
 - Upgrading to Node.js 14.x LTS

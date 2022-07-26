@@ -7,12 +7,12 @@ import {
 import { createReadStream } from 'fs'
 import { PassThrough } from 'stream'
 
-const client = new TranscribeStreamingClient({})
-const command = new StartStreamTranscriptionCommand({
-  LanguageCode: 'en-US',
-  MediaEncoding: 'pcm',
-  MediaSampleRateHertz: 44100,
-  AudioStream: audioStream(),
+const client = new TranscribeStreamingClient({
+  region: 'eu-west-1',
+  credentials: {
+    accessKeyId: '',
+    secretAccessKey: ''
+  },
 })
 
 const audioSource = createReadStream('ghfhgh.mp4')
@@ -25,10 +25,20 @@ const audioStream = async function* () {
 }
 // StartStreamTranscriptionCommandOutput
 async function transcribeAudio() {
+
+  const command = new StartStreamTranscriptionCommand({
+    LanguageCode: 'en-US',
+    MediaEncoding: 'pcm',
+    MediaSampleRateHertz: 44100,
+    AudioStream: audioStream(),
+  })
+  
+  
   const response = await client.send(command)
 
-  if (!Array.isArray(response?.TranscriptResultStream)) return
-
+  console.log('----00----');
+  console.log(response);
+  console.log('====00====');
   // This snippet should be put into an async function
   for await (const event of response?.TranscriptResultStream) {
     if (event.TranscriptEvent) {

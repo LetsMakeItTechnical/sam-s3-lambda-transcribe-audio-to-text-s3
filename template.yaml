@@ -1,321 +1,57 @@
-AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
-Description: simple schedule serverless application setup
+# AWSTemplateFormatVersion: '2010-09-09'
+# Transform: AWS::Serverless-2016-10-31
+# Description: simple schedule serverless application setup
   # https://www.createit.com/blog/speech-to-text-streaming-demo-in-react/
   # https://cloudonaut.io/serverless-websocket-api-api-gateway-kinesis-lambda/
   # https://masteringjs.io/tutorials/axios/get-query-params
   # https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/clients/client-transcribe-streaming/classes/transcribestreaming.html
   # https://github.com/aws/aws-toolkit-jetbrains
-Globals:
-  Api:
-    MinimumCompressionSize: 0
-    TracingEnabled: true
-  Function:
-    CodeUri: src/application/handlers/
-    Tracing: Active
-    Timeout: 3
-    Runtime: nodejs14.x
-    Architectures:
-      - x86_64
-    Environment:
-      Variables:
-        ENV: Production
-        PGDBCLUSTERARN: !ImportValue "default-db-cluster-arn"
-        PGUSER: !ImportValue "default-db-admin-username"
-        PGHOST: !ImportValue "default-db-cluster-endpoint"
-        PGPASSWORD: !ImportValue "default-db-password"
-        PGDATABASE: !ImportValue "default-db-name"
-        PGPORT: 5432 
-        SECRET_ARN: !ImportValue "default-db-secret"
-        AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
-        JWT_SECRET: "somesecretpossiblyssl"
-        JWT_EXPIRES_IN: "30d"
-
-Conditions:
-  isSamLocal: !Equals [!Ref "AWS::StackName", ""]
-  isMaster: !Equals [!Ref "AWS::StackName", "auth-service"]
-
-Parameters:
-  TableName:
-    Type: String
-    Default: 'simplechat_connections'
-    Description: (Required) The name of the new DynamoDB to store connection identifiers for each connected clients. Minimum 3 characters
-    MinLength: 3
-    MaxLength: 50
-    AllowedPattern: ^[A-Za-z_]+$
-    ConstraintDescription: 'Required. Can be characters and underscore only. No numbers or special characters allowed.'
-
-  LanguageCode:
-    Type: String
-    Description: 'The language code of your audio file'
-    Default: 'en-GB'
-    AllowedValues : ['en-US','es-US','en-AU','fr-CA','en-GB','de-DE','pt-BR','fr-FR','it-IT','ko-KR','es-ES']
-    
-  InputS3BucketName:
-    Type: String
-    Default: 's3-lambda-transcribe-input-audio-build-testing'
-    MinLength: 3
-
-  OutputS3BucketName:
-    Type: String
-    Default: 's3-lambda-transcribe-output-text-build-testing'
-    MinLength: 3
-
 Resources:
-  InputS3Bucket:
-    Type: AWS::S3::Bucket
+  Api:
+    Type: 'AWS::ApiGatewayV2::Api'
     Properties:
-      BucketName: !Ref InputS3BucketName
-
-  OutputS3Bucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Ref OutputS3BucketName
-
-  ConvertFileFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: convert-file-to-transcript-function.lambdaHandler
-      Timeout: 30
-      MemorySize: 1024
-      Policies:
-      - S3CrudPolicy:
-          BucketName: !Ref OutputS3BucketName
-      - S3ReadPolicy:
-          BucketName: !Ref InputS3BucketName
-      - Statement:
-          - Effect: Allow
-            Action:
-              - 'transcribe:StartTranscriptionJob'
-              - '*'
-            Resource: '*'
-      Environment:
-        Variables:
-          OUTPUT_BUCKET: !Ref OutputS3Bucket
-          LANGUAGE_CODE: !Ref LanguageCode
-      Events:
-        FileUpload:
-          Type: S3
-          Properties:
-            Bucket: !Ref InputS3Bucket
-            Events: s3:ObjectCreated:*
-
-  StreamAudiFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: stream-audio-transcipt-function.lambdaHandler
-      Timeout: 30
-      MemorySize: 1024
-      Role: !GetAtt 'StreamRole.Arn'
-      Layers:
-       - !Sub 'arn:aws:lambda:${AWS::Region}:853553028582:layer:monitoring-jump-start:1'
-       - !Sub arn:aws:lambda:eu-west-1:294911308564:layer:-layer:1
-      Policies:
-      - S3CrudPolicy:
-          BucketName: !Ref OutputS3BucketName
-      - S3ReadPolicy:
-          BucketName: !Ref InputS3BucketName
-      - Statement:
-          - Effect: Allow
-            Action:
-              - 'transcribe:StartTranscriptionJob'
-              - '*'
-            Resource: '*'
-      Environment:
-        Variables:
-          OUTPUT_BUCKET: !Ref OutputS3Bucket
-          LANGUAGE_CODE: !Ref LanguageCode
-
-# WEBSOCKET  API INTERGRATION
-  SimpleChatWebSocket:
-    Type: AWS::ApiGatewayV2::Api
-    Properties:
-      Name: SimpleChatWebSocket
+      Name: !Ref 'AWS::StackName'
       ProtocolType: WEBSOCKET
-      RouteSelectionExpression: "$request.body.action"
-      # RouteSelectionExpression: '\$default'
-
-  ConnectRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref SimpleChatWebSocket
-      RouteKey: $connect
-      AuthorizationType: NONE
-      OperationName: ConnectRoute
-      Target: !Join
-        - '/'
-        - - 'integrations'
-          - !Ref ConnectInteg
-
-  ConnectInteg:
-    Type: AWS::ApiGatewayV2::Integration
-    Properties:
-      ApiId: !Ref SimpleChatWebSocket
-      Description: Connect Integration
-      IntegrationType: AWS_PROXY
-      IntegrationUri: 
-        Fn::Sub:
-            arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnConnectFunction.Arn}/invocations
-
-  DisconnectRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref SimpleChatWebSocket
-      RouteKey: $disconnect
-      AuthorizationType: NONE
-      OperationName: DisconnectRoute
-      Target: !Join
-        - '/'
-        - - 'integrations'
-          - !Ref DisconnectInteg
-
-  DisconnectInteg:
-    Type: AWS::ApiGatewayV2::Integration
-    Properties:
-      ApiId: !Ref SimpleChatWebSocket
-      Description: Disconnect Integration
-      IntegrationType: AWS_PROXY
-      IntegrationUri: 
-        Fn::Sub:
-            arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnDisconnectFunction.Arn}/invocations
-
-  SendRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref SimpleChatWebSocket
-      RouteKey: sendmessage
-      AuthorizationType: NONE
-      OperationName: SendRoute
-      Target: !Join
-        - '/'
-        - - 'integrations'
-          - !Ref SendInteg
-
-  SendInteg:
-    Type: AWS::ApiGatewayV2::Integration
-    Properties:
-      ApiId: !Ref SimpleChatWebSocket
-      Description: Send Integration
-      IntegrationType: AWS_PROXY
-      IntegrationUri: 
-        Fn::Sub:
-            arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SendMessageFunction.Arn}/invocations
-            
-
-  Deployment:
-    Type: AWS::ApiGatewayV2::Deployment
-    DependsOn:
-    - ConnectRoute
-    - SendRoute
-    - DisconnectRoute
-    - DefaultRoute
-    Properties:
-      ApiId: !Ref SimpleChatWebSocket
-
-  Stage:
-    Type: AWS::ApiGatewayV2::Stage
-    Properties:
-      StageName: Prod
-      Description: Prod Stage
-      DeploymentId: !Ref Deployment
-      ApiId: !Ref SimpleChatWebSocket
-
-  ConnectionsTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      AttributeDefinitions:
-      - AttributeName: "connectionId"
-        AttributeType: "S"
-      KeySchema:
-      - AttributeName: "connectionId"
-        KeyType: "HASH"
-      ProvisionedThroughput:
-        ReadCapacityUnits: 5
-        WriteCapacityUnits: 5
-      SSESpecification:
-        SSEEnabled: True
-      TableName: !Ref TableName
-
-  OnConnectFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: onconnect.lambdaHandler
-      MemorySize: 256
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref TableName
-      Policies:
-      - DynamoDBCrudPolicy:
-          TableName: !Ref TableName
-
-  OnConnectPermission:
-    Type: AWS::Lambda::Permission
-    DependsOn:
-      - SimpleChatWebSocket
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref OnConnectFunction
-      Principal: apigateway.amazonaws.com
-  
-
-  OnDisconnectFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: ondisconnect.lambdaHandler
-      MemorySize: 256
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref TableName
-      Policies:
-      - DynamoDBCrudPolicy:
-          TableName: !Ref TableName
-
-  OnDisconnectPermission:
-    Type: AWS::Lambda::Permission
-    DependsOn:
-      - SimpleChatWebSocket
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref OnDisconnectFunction
-      Principal: apigateway.amazonaws.com
-
-  SendMessageFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: sendmessage.lambdaHandler
-      MemorySize: 256
-      Environment:
-        Variables:
-          TABLE_NAME: !Ref TableName
-      Policies:
-      - DynamoDBCrudPolicy:
-          TableName: !Ref TableName
-      - Statement:
-        - Effect: Allow
-          Action:
-          - 'execute-api:ManageConnections'
-          Resource:
-          - !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SimpleChatWebSocket}/*'
-
-  SendMessagePermission:
-    Type: AWS::Lambda::Permission
-    DependsOn:
-      - SimpleChatWebSocket
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref SendMessageFunction
-      Principal: apigateway.amazonaws.com
-
-#  KENESIS INTERGARTION
+      RouteSelectionExpression: '\$default'
   DefaultRoute:
-    Type: AWS::ApiGatewayV2::Route
+    Type: 'AWS::ApiGatewayV2::Route'
     Properties:
-      ApiId: !Ref SimpleChatWebSocket
+      ApiId: !Ref Api
       AuthorizationType: NONE
-      OperationName: DefaultRoute
       RouteKey: '$default'
       Target: !Sub 'integrations/${KinesisIntegration}'
-
+  Stage:
+    Type: 'AWS::ApiGatewayV2::Stage'
+    Properties:
+      ApiId: !Ref Api
+      DeploymentId: !Ref Deployment
+      StageName: 'v1'
+      DefaultRouteSettings:
+        LoggingLevel: INFO
+        DataTraceEnabled: true
+  Deployment:
+    Type: 'AWS::ApiGatewayV2::Deployment'
+    DependsOn: DefaultRoute
+    Properties:
+      ApiId: !Ref Api
+  KinesisIntegration:
+    Type: 'AWS::ApiGatewayV2::Integration'
+    Properties:
+      ApiId: !Ref Api
+      CredentialsArn: !GetAtt IntegrationRole.Arn
+      IntegrationMethod: 'POST'
+      IntegrationType: 'AWS'
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:kinesis:action/PutRecord'
+      RequestTemplates:
+        default: !Sub |
+          #set($payload = $input.json('$'))
+          #set($data = "{""payload"": $payload, ""connectionId"": ""$context.connectionId""}")
+          {
+              "Data": "$util.base64Encode($data)",
+              "PartitionKey": "$context.connectionId",
+              "StreamName": "${EventStream}"
+          }
+      TemplateSelectionExpression: default
   IntegrationRole:
     Type: 'AWS::IAM::Role'
     Properties: 
@@ -334,28 +70,8 @@ Resources:
           Version: '2012-10-17'
           Statement:
           - Effect: Allow
-            Action: 'kinesis:*'
+            Action: 'kinesis:PutRecord'
             Resource: !GetAtt 'EventStream.Arn'
-      
-  KinesisIntegration:
-    Type: AWS::ApiGatewayV2::Integration
-    Properties:
-      ApiId: !Ref SimpleChatWebSocket
-      Description: Send Integration
-      CredentialsArn: !GetAtt IntegrationRole.Arn
-      IntegrationMethod: 'POST'
-      IntegrationType: 'AWS'
-      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:kinesis:action/PutRecord'
-      RequestTemplates:
-        default: !Sub |
-          #set($payload = $input.json('$'))
-          #set($data = "{""payload"": $payload, ""connectionId"": ""$context.connectionId""}")
-          {
-              "Data": "$util.base64Encode($data)",
-              "PartitionKey": "$context.connectionId",
-              "StreamName": "${EventStream}"
-          }
-      # TemplateSelectionExpression: default
   EventStream:
     Type: 'AWS::Kinesis::Stream'
     Properties: 
@@ -371,10 +87,46 @@ Resources:
       BatchSize: 16
       Enabled: true
       EventSourceArn: !Ref EventStreamConsumer
-      FunctionName: !GetAtt 'StreamAudiFunction.Arn'
+      FunctionName: !GetAtt 'StreamFunction.Arn'
       StartingPosition: LATEST
-
-
+  StreamFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: 'index.handler'
+      Runtime: nodejs14.x
+      Layers:
+      - !Sub 'arn:aws:lambda:${AWS::Region}:853553028582:layer:monitoring-jump-start:1'
+      MemorySize: 128
+      Timeout: 30
+      Role: !GetAtt 'StreamRole.Arn'
+      Code:
+        ZipFile: !Sub |
+          'use strict';
+          const AWS = require('aws-sdk');
+          const api = new AWS.ApiGatewayManagementApi({
+            apiVersion: '2018-11-29',
+            endpoint: '${Api}.execute-api.${AWS::Region}.amazonaws.com/${Stage}'
+          });
+          exports.handler = async (event) => {
+            console.log(JSON.stringify(event));
+            for (let r in event.Records) {
+                const data = JSON.parse(new Buffer(event.Records[r].kinesis.data, 'base64').toString());
+                try {
+                  await api.postToConnection({
+                    ConnectionId: data.connectionId,
+                    Data: JSON.stringify(data.payload)
+                  }).promise();
+                } catch (e) {
+                  if (e.statusCode === 410) {
+                    // do nothing, client disconnected
+                    console.log('client disconnected');
+                  } else {
+                    throw e;
+                  }
+                }    
+            }
+            return "OK";
+          };
   StreamRole:
     Type: 'AWS::IAM::Role'
     Properties:
@@ -391,7 +143,7 @@ Resources:
           Statement:
           - Effect: Allow
             Action: 'execute-api:ManageConnections'
-            Resource: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SimpleChatWebSocket}/${Stage}/POST/@connections/*'
+            Resource: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/${Stage}/POST/@connections/*'
           - Effect: Allow
             Action: 
             - 'kinesis:ListShards'
@@ -417,32 +169,8 @@ Resources:
   StreamLogGroup:
     Type: 'AWS::Logs::LogGroup'
     Properties:
-      LogGroupName: !Sub '/aws/lambda/${StreamAudiFunction}'
+      LogGroupName: !Sub '/aws/lambda/${StreamFunction}'
       RetentionInDays: 14
-
 Outputs:
-  InputS3Bucket:
-    Description: Input S3 bucket
-    Value: !Ref InputS3Bucket
-  OutputS3Bucket:
-    Description: Output S3 bucket
-    Value: !Ref OutputS3Bucket
-  ConnectionsTableArn:
-    Description: "Connections table ARN"
-    Value: !GetAtt ConnectionsTable.Arn
-
-  OnConnectFunctionArn:
-    Description: "OnConnect function ARN"
-    Value: !GetAtt OnConnectFunction.Arn
-
-  OnDisconnectFunctionArn:
-    Description: "OnDisconnect function ARN"
-    Value: !GetAtt OnDisconnectFunction.Arn
-
-  SendMessageFunctionArn:
-    Description: "SendMessage function ARN"
-    Value: !GetAtt SendMessageFunction.Arn
-
   WebSocketURI:
-    Description: "The WSS Protocol URI to connect to"
-    Value: !Join [ '', [ 'wss://', !Ref SimpleChatWebSocket, '.execute-api.',!Ref 'AWS::Region','.amazonaws.com/',!Ref 'Stage'] ]
+    Value: !Sub 'wss://${Api}.execute-api.${AWS::Region}.amazonaws.com/${Stage}'
